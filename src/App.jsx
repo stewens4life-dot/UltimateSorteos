@@ -4,7 +4,8 @@ import {
   ChevronRight, ChevronLeft, Volume2, VolumeX, 
   Image as ImageIcon, Video, X, Edit3, Save, Clock, Monitor, ArrowLeft,
   FileImage, Plus, LayoutGrid, Copy, MousePointerClick, Home, CheckCircle,
-  AlertTriangle, Info, Calendar, RotateCcw, Eye, Shield, Palette, EyeOff
+  AlertTriangle, Info, Calendar, RotateCcw, Eye, Shield, Palette, EyeOff,
+  Pipette, Sun
 } from 'lucide-react';
 
 // --- Constantes y Temas ---
@@ -72,7 +73,9 @@ const DEFAULT_CONFIG = {
   timerDuration: 5,
   revealMode: 'individual',
   removeWinners: false,
-  colorTheme: 'gold' 
+  colorTheme: 'gold',
+  customColor: '#FACC15', 
+  whiteLogo: false // Tiñe el logo de blanco
 };
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -170,11 +173,12 @@ export default function App() {
             updatedAt: Date.now(),
             status: 'draft',
             results: [],
-            substitutes: [] 
+            substitutes: [],
+            logo: null // Logo inicial
         }];
       } catch (e) {
           console.error("Error localStorage:", e);
-          return [{ id: generateId(), title: "Sorteo General", participants: [], config: DEFAULT_CONFIG, updatedAt: Date.now(), status: 'draft', results: [], substitutes: [] }];
+          return [{ id: generateId(), title: "Sorteo General", participants: [], config: DEFAULT_CONFIG, updatedAt: Date.now(), status: 'draft', results: [], substitutes: [], logo: null }];
       }
   });
 
@@ -184,12 +188,11 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, raffleId: null });
   const [resetModal, setResetModal] = useState({ isOpen: false, raffleId: null });
-  const [showSubstitutes, setShowSubstitutes] = useState(false); // Nuevo estado para controlar visibilidad
+  const [showSubstitutes, setShowSubstitutes] = useState(false);
 
-  // Recursos Globales
+  // Recursos Globales (Solo Fondo por ahora)
   const [bgSource, setBgSource] = useState(null);
   const [bgType, setBgType] = useState(null);
-  const [logo, setLogo] = useState(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
 
   // --- Estados del Editor/Live ---
@@ -198,6 +201,7 @@ export default function App() {
   const [inputText, setInputText] = useState("");
   const [isEditingList, setIsEditingList] = useState(false);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
+  const [currentLogo, setCurrentLogo] = useState(null); // Estado local del logo en editor
   
   // Estados Live
   const [liveStep, setLiveStep] = useState('ready');
@@ -217,9 +221,8 @@ export default function App() {
   useEffect(() => {
     const savedBg = localStorage.getItem('elite-bg');
     const savedBgType = localStorage.getItem('elite-bg-type');
-    const savedLogo = localStorage.getItem('elite-logo');
+    
     if (savedBg) { setBgSource(savedBg); setBgType(savedBgType || 'image'); }
-    if (savedLogo) setLogo(savedLogo);
 
     applauseAudio.current = new Audio('https://www.soundjay.com/human/sounds/applause-01.mp3'); 
     tickAudio.current = new Audio('https://www.soundjay.com/button/sounds/beep-07.mp3'); 
@@ -260,7 +263,57 @@ export default function App() {
   const stopSound = (audioRef) => { if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; } };
 
   // --- Helpers ---
-  const getCurrentTheme = () => THEMES[config.colorTheme || 'gold'];
+  const getCurrentTheme = () => {
+      // Si es un tema personalizado
+      if (config.colorTheme === 'custom') {
+          return {
+              id: 'custom',
+              name: 'Personalizado',
+              isCustom: true,
+              color: config.customColor || '#FACC15',
+              from: '', to: '', text: '', bg: '', border: '', shadow: '', ring: ''
+          };
+      }
+      return THEMES[config.colorTheme || 'gold'];
+  };
+
+  const getThemeProps = (type) => {
+      const theme = getCurrentTheme();
+      if (theme.isCustom) {
+          const color = theme.color;
+          const style = {};
+          let className = '';
+
+          switch(type) {
+              case 'text': style.color = color; break;
+              case 'bg': style.backgroundColor = color; break;
+              case 'border': style.borderColor = color; break;
+              case 'ring': 
+                style.borderColor = color; 
+                style.boxShadow = `0 0 0 2px ${color}`; 
+                break;
+              case 'gradient': 
+                style.background = `linear-gradient(135deg, ${color}, ${color})`; 
+                break;
+              case 'shadow':
+                  style.boxShadow = `0 10px 15px -3px ${color}80`;
+                  break;
+              default: break;
+          }
+          return { style, className };
+      }
+
+      switch(type) {
+          case 'text': return { className: theme.text };
+          case 'bg': return { className: theme.bg };
+          case 'border': return { className: theme.border };
+          case 'ring': return { className: theme.ring };
+          case 'gradient': return { className: `bg-gradient-to-br ${theme.from} ${theme.to}` };
+          case 'shadow': return { className: theme.shadow };
+          default: return {};
+      }
+  };
+
 
   // --- Funciones de Gestión ---
 
@@ -273,7 +326,8 @@ export default function App() {
           updatedAt: Date.now(),
           status: 'draft',
           results: [],
-          substitutes: []
+          substitutes: [],
+          logo: null
       };
       setRaffles(prev => [...prev, newRaffle]);
       loadRaffleIntoEditor(newRaffle);
@@ -300,7 +354,8 @@ export default function App() {
                 updatedAt: Date.now(),
                 status: 'draft',
                 results: [],
-                substitutes: []
+                substitutes: [],
+                logo: null
              };
              if (currentRaffleId === idToDelete) {
                  setTimeout(() => loadRaffleIntoEditor(defaultRaffle), 0);
@@ -339,7 +394,7 @@ export default function App() {
 
   const duplicateRaffle = (raffle, e) => {
       e.stopPropagation();
-      const newRaffle = { ...raffle, id: generateId(), title: `${raffle.title} (Copia)`, updatedAt: Date.now(), status: 'draft', results: [], substitutes: [] };
+      const newRaffle = { ...raffle, id: generateId(), title: `${raffle.title} (Copia)`, updatedAt: Date.now(), status: 'draft', results: [], substitutes: [], logo: raffle.logo };
       setRaffles(prev => [...prev, newRaffle]);
       showToast("Sorteo duplicado");
   };
@@ -349,6 +404,7 @@ export default function App() {
       setTitle(raffle.title);
       setParticipants(raffle.participants || []);
       setConfig({ ...DEFAULT_CONFIG, ...raffle.config }); 
+      setCurrentLogo(raffle.logo || null); // Cargar logo específico
       setView('editor');
       setWinners(raffle.results || []); 
       setSubstitutes(raffle.substitutes || []);
@@ -360,13 +416,13 @@ export default function App() {
           const timer = setTimeout(() => {
               setRaffles(prev => prev.map(r => 
                   r.id === currentRaffleId 
-                    ? { ...r, title, participants, config, updatedAt: Date.now() } 
+                    ? { ...r, title, participants, config, logo: currentLogo, updatedAt: Date.now() } 
                     : r
               ));
           }, 400); 
           return () => clearTimeout(timer);
       }
-  }, [title, participants, config]);
+  }, [title, participants, config, currentLogo]);
 
   // --- Lógica de Ejecución y Visualización ---
 
@@ -374,7 +430,7 @@ export default function App() {
       e.stopPropagation();
       loadRaffleIntoEditor(raffle);
       setView('live');
-      setShowSubstitutes(false); // Resetear visibilidad de suplentes
+      setShowSubstitutes(false); 
       
       if (raffle.status === 'completed') {
           setWinners(raffle.results || []);
@@ -427,7 +483,7 @@ export default function App() {
     setLiveStep('countdown');
     setCurrentWinnerIndex(0);
     setShowConfetti(false);
-    setShowSubstitutes(false); // Resetear al iniciar nuevo sorteo
+    setShowSubstitutes(false);
     playSound(tickAudio);
   };
 
@@ -490,8 +546,9 @@ export default function App() {
   const handleBgUpload = (e) => { 
     const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onload = (ev) => { try { localStorage.setItem('elite-bg', ev.target.result); localStorage.setItem('elite-bg-type', file.type.startsWith('video/') ? 'video' : 'image'); } catch(e) {} setBgSource(ev.target.result); setBgType(file.type.startsWith('video/') ? 'video' : 'image'); showToast("Fondo actualizado"); }; reader.readAsDataURL(file); }
   };
+  // Modificado: Ahora actualiza el logo del sorteo actual
   const handleLogoUpload = (e) => { 
-    const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onload = (ev) => { try { localStorage.setItem('elite-logo', ev.target.result); } catch(e) {} setLogo(ev.target.result); showToast("Logo actualizado"); }; reader.readAsDataURL(file); }
+    const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onload = (ev) => { setCurrentLogo(ev.target.result); showToast("Logo del sorteo actualizado"); }; reader.readAsDataURL(file); }
   };
   const handleFileUpload = (e) => { 
     const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onload = (ev) => { const rawNames = ev.target.result.split(/[\r\n,]+/).map((n) => n.trim()).filter((n) => n !== ''); const unique = Array.from(new Set([...participants, ...rawNames])); setParticipants(unique); showToast(`Cargados ${unique.length} participantes`); }; reader.readAsText(file); }
@@ -504,6 +561,7 @@ export default function App() {
 
   // --- Render Helpers ---
   const theme = getCurrentTheme();
+  const currentRaffleLogo = view === 'live' ? raffles.find(r => r.id === currentRaffleId)?.logo : currentLogo;
 
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans overflow-hidden relative select-none flex flex-col">
@@ -554,12 +612,8 @@ export default function App() {
                 </div>
                 <div className="flex gap-3">
                     <label className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 cursor-pointer transition-all">
-                        <ImageIcon size={16} /> <span className="text-xs font-bold uppercase hidden md:inline">Fondo</span>
+                        <ImageIcon size={16} /> <span className="text-xs font-bold uppercase hidden md:inline">Fondo Global</span>
                         <input type="file" accept="image/*,video/*" onChange={handleBgUpload} className="hidden" />
-                    </label>
-                    <label className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 cursor-pointer transition-all">
-                        <FileImage size={16} /> <span className="text-xs font-bold uppercase hidden md:inline">Logo</span>
-                        <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
                     </label>
                     <button onClick={() => setSoundEnabled(!soundEnabled)} className={`p-2 rounded-xl border ${soundEnabled ? 'text-yellow-400 bg-yellow-400/10 border-yellow-500/20' : 'text-white/20 bg-white/5 border-white/10'}`}>
                         {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
@@ -576,8 +630,10 @@ export default function App() {
                 </button>
 
                 {raffles.map(raffle => {
-                    // Obtener el tema de este sorteo para colorear la tarjeta
-                    const rTheme = THEMES[raffle.config?.colorTheme || 'gold'];
+                    const rTheme = THEMES[raffle.config?.colorTheme] || THEMES.gold;
+                    const isCustom = raffle.config?.colorTheme === 'custom';
+                    const customColor = raffle.config?.customColor || '#FACC15';
+
                     return (
                         <div 
                             key={raffle.id} 
@@ -591,7 +647,10 @@ export default function App() {
                             className={`group backdrop-blur-md border rounded-3xl p-6 relative hover:border-white/30 transition-all cursor-pointer flex flex-col h-64 ${raffle.status === 'completed' ? 'bg-green-900/20 border-green-500/30' : 'bg-black/40 border-white/10'}`}
                         >
                             <div className="flex justify-between items-start mb-4">
-                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg ${raffle.status === 'completed' ? 'bg-green-500 text-black' : `bg-gradient-to-br ${rTheme.from} ${rTheme.to} text-white`}`}>
+                                <div 
+                                    className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg ${raffle.status === 'completed' ? 'bg-green-500 text-black' : isCustom ? '' : `bg-gradient-to-br ${rTheme.from} ${rTheme.to} text-white`}`}
+                                    style={!raffle.status === 'completed' && isCustom ? { backgroundColor: customColor, color: 'white' } : {}}
+                                >
                                     {raffle.status === 'completed' ? <CheckCircle size={18} /> : <Trophy size={18} />}
                                 </div>
                                 <div className="flex gap-2">
@@ -610,7 +669,12 @@ export default function App() {
                             </div>
                             
                             <div className="flex-1 overflow-hidden">
-                                <h3 className={`text-xl font-bold text-white mb-2 line-clamp-1 leading-tight group-hover:${rTheme.text} transition-colors`}>{raffle.title}</h3>
+                                <h3 
+                                    className={`text-xl font-bold text-white mb-2 line-clamp-1 leading-tight transition-colors ${!isCustom && `group-hover:${rTheme.text}`}`}
+                                    style={isCustom ? { color: 'white' } : {}} 
+                                >
+                                    {raffle.title}
+                                </h3>
                                 {raffle.status === 'completed' ? (
                                     <div className="bg-black/30 rounded-lg p-2 text-xs text-white/70 h-full overflow-hidden">
                                         <p className="font-bold text-green-400 uppercase mb-1">Resultados:</p>
@@ -630,7 +694,11 @@ export default function App() {
                             </div>
 
                             <div className="mt-4 pt-4 border-t border-white/10 flex gap-2">
-                                <button onClick={(e) => handleMainAction(raffle, e)} className={`flex-1 py-2 rounded-xl text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 font-bold ${raffle.status === 'completed' ? 'bg-white/10 hover:bg-white/20 text-white' : `bg-white/5 hover:${rTheme.bg} hover:text-black text-white`}`}>
+                                <button 
+                                    onClick={(e) => handleMainAction(raffle, e)} 
+                                    className={`flex-1 py-2 rounded-xl text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 font-bold ${raffle.status === 'completed' ? 'bg-white/10 hover:bg-white/20 text-white' : isCustom ? 'bg-white/5 text-white' : `bg-white/5 hover:${rTheme.bg} hover:text-black text-white`}`}
+                                    style={!raffle.status === 'completed' && isCustom ? { borderColor: customColor } : {}} 
+                                >
                                     {raffle.status === 'completed' ? <><Eye size={14}/> Ver Resultados</> : <><Play size={14}/> Lanzar</>}
                                 </button>
                                 {raffle.status !== 'completed' && (
@@ -674,7 +742,11 @@ export default function App() {
                             <Trash2 size={18} />
                         </button>
                     )}
-                    <button onClick={(e) => handleMainAction(raffles.find(r => r.id === currentRaffleId), e)} className={`bg-gradient-to-r ${theme.from} ${theme.to} text-black font-bold py-2 px-6 rounded-xl flex items-center gap-2 transition-all shadow-lg hover:scale-105`}>
+                    <button 
+                        onClick={(e) => handleMainAction(raffles.find(r => r.id === currentRaffleId), e)} 
+                        className={`font-bold py-2 px-6 rounded-xl flex items-center gap-2 transition-all shadow-lg hover:scale-105 ${getThemeProps('gradient').className} text-black`}
+                        style={getThemeProps('gradient').style}
+                    >
                         <Monitor size={18} /> <span className="hidden md:inline">IR AL LIVE</span>
                     </button>
                 </div>
@@ -684,7 +756,7 @@ export default function App() {
                 <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <div className="bg-black/30 border border-white/10 rounded-3xl p-6 flex flex-col h-[600px]">
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className={`font-bold flex items-center gap-2 ${theme.text}`}><Users size={18}/> Lista de Participantes</h3>
+                            <h3 className={`font-bold flex items-center gap-2 ${getThemeProps('text').className}`} style={getThemeProps('text').style}><Users size={18}/> Lista de Participantes</h3>
                             <div className="flex gap-2">
                                 <button onClick={() => setParticipants([])} className="p-2 hover:bg-red-500/20 text-white/50 hover:text-red-400 rounded-lg"><Trash2 size={16}/></button>
                                 <button onClick={() => { setIsEditingList(!isEditingList); if(!isEditingList) setInputText(participants.join('\n')); else handleManualSave(); }} className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase border ${isEditingList ? 'bg-green-500/20 border-green-500/50 text-green-400' : 'bg-white/5 border-white/10'}`}>
@@ -714,20 +786,50 @@ export default function App() {
                     </div>
                     
                     <div className="bg-black/30 border border-white/10 rounded-3xl p-8 flex flex-col gap-8 h-fit">
-                        <h3 className={`font-bold flex items-center gap-2 ${theme.text}`}><Settings size={18}/> Configuración</h3>
+                        <h3 className={`font-bold flex items-center gap-2 ${getThemeProps('text').className}`} style={getThemeProps('text').style}><Settings size={18}/> Configuración</h3>
                         
-                        {/* THEME SELECTOR */}
-                        <div>
-                            <label className="flex items-center gap-2 text-xs font-bold uppercase text-white/50 mb-3"><Palette size={12}/> Color de Énfasis</label>
-                            <div className="flex gap-3">
-                                {Object.values(THEMES).map((t) => (
-                                    <button 
-                                        key={t.id}
-                                        onClick={() => setConfig({...config, colorTheme: t.id})}
-                                        className={`w-8 h-8 rounded-full bg-gradient-to-br ${t.from} ${t.to} border-2 transition-all hover:scale-110 ${config.colorTheme === t.id ? 'border-white scale-110 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
-                                        title={t.name}
-                                    />
-                                ))}
+                        {/* THEME SELECTOR & LOGO OPTIONS */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="flex items-center gap-2 text-xs font-bold uppercase text-white/50 mb-3"><Palette size={12}/> Color de Énfasis</label>
+                                <div className="flex gap-3 flex-wrap">
+                                    {Object.values(THEMES).map((t) => (
+                                        <button 
+                                            key={t.id}
+                                            onClick={() => setConfig({...config, colorTheme: t.id})}
+                                            className={`w-8 h-8 rounded-full bg-gradient-to-br ${t.from} ${t.to} border-2 transition-all hover:scale-110 ${config.colorTheme === t.id ? 'border-white scale-110 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                                            title={t.name}
+                                        />
+                                    ))}
+                                    <label className={`w-8 h-8 rounded-full border-2 transition-all hover:scale-110 cursor-pointer flex items-center justify-center bg-white/10 ${config.colorTheme === 'custom' ? 'border-white scale-110 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`} title="Color Personalizado" style={{ backgroundColor: config.colorTheme === 'custom' ? config.customColor : undefined }}>
+                                        <input type="color" className="opacity-0 absolute w-0 h-0" value={config.customColor || '#FACC15'} onChange={(e) => setConfig({...config, colorTheme: 'custom', customColor: e.target.value})} />
+                                        <Pipette size={14} className={config.colorTheme === 'custom' ? 'text-white drop-shadow-md' : 'text-white'} />
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label className="flex items-center gap-2 text-xs font-bold uppercase text-white/50 mb-3"><FileImage size={12}/> Logo del Evento</label>
+                                <div className="space-y-4">
+                                    <label className="flex items-center gap-3 w-full bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-2 cursor-pointer transition-colors group">
+                                        <div className="w-10 h-10 bg-black/20 rounded-lg flex items-center justify-center overflow-hidden border border-white/5">
+                                             {currentLogo ? <img src={currentLogo} className="w-full h-full object-contain" /> : <Upload size={16} className="text-white/30" />}
+                                        </div>
+                                        <div className="flex-1">
+                                            <span className="text-xs font-bold text-white/70 group-hover:text-white block">Subir Logo</span>
+                                            <span className="text-[10px] text-white/30 block">PNG, JPG (Max 2MB)</span>
+                                        </div>
+                                        <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                                    </label>
+
+                                    <label className="flex items-center gap-3 cursor-pointer group">
+                                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${config.whiteLogo ? 'bg-white border-white' : 'border-white/30 group-hover:border-white/50'}`}>
+                                            {config.whiteLogo && <div className="w-2 h-2 bg-black rounded-sm" />}
+                                        </div>
+                                        <input type="checkbox" checked={config.whiteLogo || false} onChange={(e) => setConfig({...config, whiteLogo: e.target.checked})} className="hidden"/>
+                                        <span className="text-xs font-medium text-white/60 group-hover:text-white/80 transition-colors flex items-center gap-2"><Sun size={12}/> Logo Blanco (Tint)</span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
 
@@ -744,8 +846,8 @@ export default function App() {
                         <div className={`space-y-6 ${raffles.find(r => r.id === currentRaffleId)?.status === 'completed' ? 'opacity-50 pointer-events-none' : ''}`}>
                             <div className="grid grid-cols-2 gap-6">
                                 <div>
-                                    <label className={`flex justify-between text-xs font-bold uppercase text-white/50 mb-2`}>Ganadores <span className={theme.text}>{config.numWinners}</span></label>
-                                    <input type="range" min="1" max={Math.max(1, participants.length)} value={config.numWinners} onChange={(e) => setConfig({...config, numWinners: parseInt(e.target.value)})} className={`w-full h-2 bg-black/50 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:${theme.bg}`}/>
+                                    <label className={`flex justify-between text-xs font-bold uppercase text-white/50 mb-2`}>Ganadores <span className={getThemeProps('text').className} style={getThemeProps('text').style}>{config.numWinners}</span></label>
+                                    <input type="range" min="1" max={Math.max(1, participants.length)} value={config.numWinners} onChange={(e) => setConfig({...config, numWinners: parseInt(e.target.value)})} className={`w-full h-2 bg-black/50 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full ${theme.isCustom ? '' : `[&::-webkit-slider-thumb]:${theme.bg}`}`} style={theme.isCustom ? { accentColor: theme.color } : {}}/>
                                 </div>
                                 <div>
                                     <label className={`flex justify-between text-xs font-bold uppercase text-white/50 mb-2`}>Suplentes <span className="text-white">{config.numSubstitutes || 0}</span></label>
@@ -756,7 +858,7 @@ export default function App() {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="flex items-center gap-2 text-xs font-bold uppercase text-white/50 mb-2"><Clock size={12}/> Tiempo (s)</label>
-                                    <input type="number" value={config.timerDuration} onChange={(e) => setConfig({...config, timerDuration: Math.max(1, parseInt(e.target.value)||0)})} className={`w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 font-bold text-center focus:${theme.border} outline-none`}/>
+                                    <input type="number" value={config.timerDuration} onChange={(e) => setConfig({...config, timerDuration: Math.max(1, parseInt(e.target.value)||0)})} className={`w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 font-bold text-center focus:outline-none ${getThemeProps('border').className}`} style={{ borderColor: theme.isCustom ? theme.color : undefined }}/>
                                 </div>
                                 <div>
                                     <label className="flex items-center gap-2 text-xs font-bold uppercase text-white/50 mb-2"><MousePointerClick size={12}/> Revelar</label>
@@ -767,7 +869,7 @@ export default function App() {
                                 </div>
                             </div>
                             <label className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 cursor-pointer border border-transparent hover:border-white/10 transition-all">
-                                <input type="checkbox" checked={config.removeWinners} onChange={(e) => setConfig({...config, removeWinners: e.target.checked})} className={`w-4 h-4 rounded bg-black/50 border-white/20 accent-${theme.bg.replace('bg-','')}`}/>
+                                <input type="checkbox" checked={config.removeWinners} onChange={(e) => setConfig({...config, removeWinners: e.target.checked})} className={`w-4 h-4 rounded bg-black/50 border-white/20 ${!theme.isCustom && `accent-${theme.bg.replace('bg-','')}`}`} style={theme.isCustom ? { accentColor: theme.color } : {}}/>
                                 <span className="text-sm font-medium text-white/80">Eliminar ganadores al finalizar</span>
                             </label>
                         </div>
@@ -789,13 +891,20 @@ export default function App() {
                         <Home size={14} /> Dashboard
                     </button>
                 </div>
-                {/* Logo Flotante AJUSTADO */}
-                {(liveStep === 'countdown' || liveStep === 'results') && logo && (
-                    <div className="fixed top-36 left-8 animate-fadeIn z-50 pointer-events-none">
-                        <img src={logo} alt="Logo" className="h-8 w-auto object-contain drop-shadow-lg opacity-80" />
-                    </div>
-                )}
-                <div className="flex gap-2">
+                
+                <div className="flex gap-2 items-center">
+                     {/* Logo Mini en Header (Cuenta regresiva y Resultados) */}
+                     {(liveStep === 'countdown' || liveStep === 'results') && currentRaffleLogo && (
+                        <div className="bg-white/5 backdrop-blur-md p-1.5 rounded-lg mr-2 border border-white/10 animate-fadeIn">
+                            <img 
+                                src={currentRaffleLogo} 
+                                alt="Logo Mini" 
+                                className="h-8 w-auto object-contain" 
+                                style={{ filter: config.whiteLogo ? 'brightness(0) invert(1)' : 'none' }} 
+                            />
+                        </div>
+                     )}
+
                      {liveStep === 'results' && (
                         <button onClick={resetLive} className={`p-3 rounded-full transition-all backdrop-blur-md ${raffles.find(r => r.id === currentRaffleId)?.status === 'completed' ? 'bg-white/5 text-white/20 cursor-not-allowed' : 'bg-white/10 hover:bg-white/20 text-white/80 hover:text-white'}`} disabled={raffles.find(r => r.id === currentRaffleId)?.status === 'completed'} title="Reinicia desde el dashboard">
                             <RefreshCw size={20} />
@@ -809,15 +918,22 @@ export default function App() {
 
             {liveStep === 'ready' && (
                 <div className="text-center animate-fadeInUp max-w-4xl px-6">
-                    <div className="mb-12 relative flex justify-center">
-                        <div className={`absolute inset-0 ${theme.bg.replace('bg-','bg-')}/20 blur-[120px] rounded-full pointer-events-none`}></div>
-                        {logo ? (
-                            <img src={logo} alt="Event Logo" className="h-40 md:h-56 w-auto object-contain drop-shadow-2xl animate-popIn" />
+                    <div className="mb-12 relative flex justify-center items-center">
+                        <div className={`absolute inset-0 ${theme.isCustom ? '' : `${theme.bg.replace('bg-','bg-')}/20`} blur-[120px] rounded-full pointer-events-none`} style={theme.isCustom ? { backgroundColor: theme.color, opacity: 0.2 } : {}}></div>
+                        {currentRaffleLogo ? (
+                            <img 
+                                src={currentRaffleLogo} 
+                                alt="Event Logo" 
+                                className="h-28 md:h-40 w-auto object-contain drop-shadow-2xl animate-popIn transition-all duration-300"
+                                style={{ 
+                                    filter: config.whiteLogo ? 'brightness(0) invert(1)' : 'none'
+                                }}
+                            />
                         ) : (
-                            <Trophy size={100} className={`${theme.text} drop-shadow-[0_0_30px_rgba(255,255,255,0.3)] animate-popIn`} />
+                            <Trophy size={100} className={`${getThemeProps('text').className} drop-shadow-[0_0_30px_rgba(255,255,255,0.3)] animate-popIn`} style={getThemeProps('text').style}/>
                         )}
                     </div>
-                    <h1 className="text-5xl md:text-8xl font-black text-white uppercase italic tracking-tighter drop-shadow-xl mb-4 leading-none">{title}</h1>
+                    <h1 className="text-4xl md:text-7xl font-black text-white uppercase italic tracking-tighter drop-shadow-xl mb-4 leading-none">{title}</h1>
                     <div className="flex justify-center gap-8 mb-16">
                         <div className="text-right border-r border-white/20 pr-8">
                             <div className="text-4xl font-black text-white">{participants.length}</div>
@@ -831,7 +947,7 @@ export default function App() {
                     
                     {/* Botón de Comenzar */}
                     {raffles.find(r => r.id === currentRaffleId)?.status !== 'completed' ? (
-                        <button onClick={startDraw} className={`group relative px-16 py-6 bg-gradient-to-r ${theme.from} ${theme.to} rounded-full font-black text-2xl text-white shadow-[0_0_60px_rgba(255,255,255,0.2)] hover:shadow-[0_0_100px_rgba(255,255,255,0.4)] hover:scale-105 transition-all duration-300 active:scale-95`}>
+                        <button onClick={startDraw} className={`group relative px-16 py-6 rounded-full font-black text-2xl text-white shadow-[0_0_60px_rgba(255,255,255,0.2)] hover:shadow-[0_0_100px_rgba(255,255,255,0.4)] hover:scale-105 transition-all duration-300 active:scale-95 ${getThemeProps('gradient').className}`} style={getThemeProps('gradient').style}>
                             <span className="relative z-10 flex items-center gap-3"><Play fill="currentColor" /> COMENZAR</span>
                             <div className="absolute inset-0 rounded-full bg-white/30 animate-pulse"></div>
                         </button>
@@ -848,11 +964,11 @@ export default function App() {
                     <div className="relative mb-12 scale-150">
                         <div className={`w-64 h-64 rounded-full border-[8px] border-white/10 flex flex-col items-center justify-center bg-black/40 backdrop-blur-xl shadow-[0_0_150px_rgba(255,255,255,0.1)] relative z-10`}>
                             <span key={countdown} className="text-[8rem] font-black text-white tabular-nums z-10 drop-shadow-2xl leading-none animate-ping-once">{countdown}</span>
-                            <div className={`absolute inset-[-8px] w-[calc(100%+16px)] h-[calc(100%+16px)] rounded-full border-t-[6px] ${theme.border} animate-spin`} style={{ animationDuration: '1s' }}></div>
+                            <div className={`absolute inset-[-8px] w-[calc(100%+16px)] h-[calc(100%+16px)] rounded-full border-t-[6px] ${getThemeProps('border').className} animate-spin`} style={{ animationDuration: '1s', ...getThemeProps('border').style }}></div>
                         </div>
                     </div>
                     <div className="w-full max-w-3xl bg-black/60 backdrop-blur-xl border border-white/10 p-8 rounded-[3rem] text-center relative overflow-hidden shadow-2xl mt-8">
-                         <div className={`text-xs font-black ${theme.text} uppercase tracking-[0.5em] mb-4 opacity-80 animate-pulse`}>{config.numWinners > 1 ? 'Seleccionando Ganadores...' : 'Seleccionando Ganador...'}</div>
+                         <div className={`text-xs font-black ${getThemeProps('text').className} uppercase tracking-[0.5em] mb-4 opacity-80 animate-pulse`} style={getThemeProps('text').style}>{config.numWinners > 1 ? 'Seleccionando Ganadores...' : 'Seleccionando Ganador...'}</div>
                          <div className="text-6xl font-black text-white/90 italic tracking-tighter truncate h-20">{randomName}</div>
                     </div>
                 </div>
@@ -861,7 +977,7 @@ export default function App() {
             {liveStep === 'results' && (
                 <div className="w-full flex flex-col items-center max-w-6xl animate-popIn pb-20 overflow-y-auto max-h-screen custom-scrollbar">
                     <div className="mb-8 text-center mt-10">
-                        <div className={`px-10 py-3 rounded-full bg-white/10 border border-white/20 ${theme.text} text-sm font-black uppercase tracking-[0.4em] inline-block shadow-[0_0_50px_rgba(0,0,0,0.5)] backdrop-blur-xl`}>
+                        <div className={`px-10 py-3 rounded-full bg-white/10 border border-white/20 ${getThemeProps('text').className} text-sm font-black uppercase tracking-[0.4em] inline-block shadow-[0_0_50px_rgba(0,0,0,0.5)] backdrop-blur-xl`} style={getThemeProps('text').style}>
                             {winners.length > 1 ? '¡Ganadores Oficiales!' : '¡Felicidades!'}
                         </div>
                     </div>
@@ -869,10 +985,10 @@ export default function App() {
                     {/* MAIN WINNERS DISPLAY */}
                     {config.revealMode === 'individual' ? (
                         <div className="flex flex-col items-center w-full max-w-5xl mb-12">
-                             <div className={`w-full bg-gradient-to-r from-slate-100 to-slate-300 text-slate-900 rounded-[3rem] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.9)] p-12 md:p-16 relative overflow-hidden mb-12 border-[8px] border-white/20 ring-4 ${theme.ring}/40 flex flex-col md:flex-row items-center gap-12`}>
+                             <div className={`w-full bg-gradient-to-r from-slate-100 to-slate-300 text-slate-900 rounded-[3rem] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.9)] p-12 md:p-16 relative overflow-hidden mb-12 border-[8px] border-white/20 ring-4 ${theme.isCustom ? '' : `${theme.ring}/40`} flex flex-col md:flex-row items-center gap-12`} style={theme.isCustom ? { ...getThemeProps('ring').style, '--tw-ring-opacity': '0.4' } : {}}>
                                 <div className="absolute top-0 right-0 p-4 opacity-[0.03] text-black pointer-events-none transform rotate-12 scale-150"><Trophy size={400} /></div>
                                 <div className="relative z-10 flex-shrink-0">
-                                    <div className={`w-40 h-40 bg-gradient-to-br ${theme.from} ${theme.to} rounded-[2.5rem] flex items-center justify-center shadow-2xl transform -rotate-3 ring-[6px] ring-white`}>
+                                    <div className={`w-40 h-40 rounded-[2.5rem] flex items-center justify-center shadow-2xl transform -rotate-3 ring-[6px] ring-white ${getThemeProps('gradient').className}`} style={getThemeProps('gradient').style}>
                                         <Trophy className="text-white" size={80} />
                                     </div>
                                 </div>
@@ -891,7 +1007,7 @@ export default function App() {
                                      <span className="text-white/40 font-bold text-xs uppercase tracking-widest mr-4">Navegar Resultados</span>
                                      <button onClick={() => { playSound(clickAudio); setShowConfetti(false); setTimeout(() => { setCurrentWinnerIndex(Math.max(0, currentWinnerIndex - 1)); triggerCelebration(); }, 100); }} disabled={currentWinnerIndex === 0} className="w-12 h-12 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-white"><ChevronLeft size={24}/></button>
                                      <span className="font-mono text-white text-2xl w-20 text-center font-bold">{currentWinnerIndex + 1}/{winners.length}</span>
-                                     <button onClick={() => { playSound(clickAudio); setShowConfetti(false); setTimeout(() => { setCurrentWinnerIndex(Math.min(winners.length - 1, currentWinnerIndex + 1)); triggerCelebration(); }, 100); }} disabled={currentWinnerIndex === winners.length - 1} className={`w-12 h-12 flex items-center justify-center rounded-full bg-gradient-to-br ${theme.from} ${theme.to} text-white font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-lg`}><ChevronRight size={24}/></button>
+                                     <button onClick={() => { playSound(clickAudio); setShowConfetti(false); setTimeout(() => { setCurrentWinnerIndex(Math.min(winners.length - 1, currentWinnerIndex + 1)); triggerCelebration(); }, 100); }} disabled={currentWinnerIndex === winners.length - 1} className={`w-12 h-12 flex items-center justify-center rounded-full text-white font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-lg ${getThemeProps('gradient').className}`} style={getThemeProps('gradient').style}><ChevronRight size={24}/></button>
                                  </div>
                              )}
 
@@ -913,10 +1029,10 @@ export default function App() {
                                     <div key={index} className="bg-white/10 backdrop-blur-md p-8 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden group hover:bg-white/15 transition-all hover:-translate-y-2 animate-fadeInUp" style={{ animationDelay: `${index * 0.1}s` }}>
                                         <div className="absolute top-0 right-0 p-4 opacity-10"><Trophy size={64} className="text-white transform rotate-12"/></div>
                                         <div className="flex items-center gap-6">
-                                            <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${theme.from} ${theme.to} flex items-center justify-center text-white font-black shadow-lg text-lg border-2 border-white/20`}>{index + 1}</div>
+                                            <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-black shadow-lg text-lg border-2 border-white/20 ${getThemeProps('gradient').className}`} style={getThemeProps('gradient').style}>{index + 1}</div>
                                             <div className="flex flex-col">
                                                 <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Ganador</span>
-                                                <span className={`text-2xl font-bold text-white uppercase tracking-tight leading-none group-hover:${theme.text} transition-colors`}>{winner}</span>
+                                                <span className={`text-2xl font-bold text-white uppercase tracking-tight leading-none transition-colors ${!theme.isCustom && `group-hover:${theme.text}`}`} style={theme.isCustom ? { color: 'white' } : {}}>{winner}</span>
                                             </div>
                                         </div>
                                     </div>
