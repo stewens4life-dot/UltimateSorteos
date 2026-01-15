@@ -4,15 +4,75 @@ import {
   ChevronRight, ChevronLeft, Volume2, VolumeX, 
   Image as ImageIcon, Video, X, Edit3, Save, Clock, Monitor, ArrowLeft,
   FileImage, Plus, LayoutGrid, Copy, MousePointerClick, Home, CheckCircle,
-  AlertTriangle, Info, Calendar, RotateCcw, Eye
+  AlertTriangle, Info, Calendar, RotateCcw, Eye, Shield, Palette, EyeOff
 } from 'lucide-react';
 
-// --- Tipos y Constantes ---
+// --- Constantes y Temas ---
+const THEMES = {
+  gold: { 
+    id: 'gold', 
+    name: 'Dorado Elite', 
+    from: 'from-yellow-400', 
+    to: 'to-orange-600', 
+    text: 'text-yellow-400', 
+    bg: 'bg-yellow-500', 
+    border: 'border-yellow-500', 
+    shadow: 'shadow-yellow-500/50',
+    ring: 'ring-yellow-500' 
+  },
+  blue: { 
+    id: 'blue', 
+    name: 'Azul Neón', 
+    from: 'from-cyan-400', 
+    to: 'to-blue-600', 
+    text: 'text-cyan-400', 
+    bg: 'bg-cyan-500', 
+    border: 'border-cyan-500', 
+    shadow: 'shadow-cyan-500/50',
+    ring: 'ring-cyan-500' 
+  },
+  green: { 
+    id: 'green', 
+    name: 'Esmeralda', 
+    from: 'from-emerald-400', 
+    to: 'to-green-600', 
+    text: 'text-emerald-400', 
+    bg: 'bg-emerald-500', 
+    border: 'border-emerald-500', 
+    shadow: 'shadow-emerald-500/50',
+    ring: 'ring-emerald-500' 
+  },
+  purple: { 
+    id: 'purple', 
+    name: 'Cyber Punk', 
+    from: 'from-fuchsia-400', 
+    to: 'to-purple-600', 
+    text: 'text-fuchsia-400', 
+    bg: 'bg-fuchsia-500', 
+    border: 'border-fuchsia-500', 
+    shadow: 'shadow-fuchsia-500/50',
+    ring: 'ring-fuchsia-500' 
+  },
+  red: { 
+    id: 'red', 
+    name: 'Carmesí', 
+    from: 'from-red-500', 
+    to: 'to-rose-700', 
+    text: 'text-red-500', 
+    bg: 'bg-red-600', 
+    border: 'border-red-600', 
+    shadow: 'shadow-red-600/50',
+    ring: 'ring-red-600' 
+  },
+};
+
 const DEFAULT_CONFIG = {
   numWinners: 1,
+  numSubstitutes: 0, 
   timerDuration: 5,
   revealMode: 'individual',
-  removeWinners: false
+  removeWinners: false,
+  colorTheme: 'gold' 
 };
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -109,11 +169,12 @@ export default function App() {
             config: DEFAULT_CONFIG,
             updatedAt: Date.now(),
             status: 'draft',
-            results: []
+            results: [],
+            substitutes: [] 
         }];
       } catch (e) {
           console.error("Error localStorage:", e);
-          return [{ id: generateId(), title: "Sorteo General", participants: [], config: DEFAULT_CONFIG, updatedAt: Date.now(), status: 'draft', results: [] }];
+          return [{ id: generateId(), title: "Sorteo General", participants: [], config: DEFAULT_CONFIG, updatedAt: Date.now(), status: 'draft', results: [], substitutes: [] }];
       }
   });
 
@@ -123,6 +184,7 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, raffleId: null });
   const [resetModal, setResetModal] = useState({ isOpen: false, raffleId: null });
+  const [showSubstitutes, setShowSubstitutes] = useState(false); // Nuevo estado para controlar visibilidad
 
   // Recursos Globales
   const [bgSource, setBgSource] = useState(null);
@@ -142,6 +204,7 @@ export default function App() {
   const [countdown, setCountdown] = useState(5);
   const [randomName, setRandomName] = useState('');
   const [winners, setWinners] = useState([]);
+  const [substitutes, setSubstitutes] = useState([]); 
   const [currentWinnerIndex, setCurrentWinnerIndex] = useState(0); 
   const [showConfetti, setShowConfetti] = useState(false);
 
@@ -196,6 +259,9 @@ export default function App() {
   };
   const stopSound = (audioRef) => { if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; } };
 
+  // --- Helpers ---
+  const getCurrentTheme = () => THEMES[config.colorTheme || 'gold'];
+
   // --- Funciones de Gestión ---
 
   const createRaffle = () => {
@@ -206,7 +272,8 @@ export default function App() {
           config: DEFAULT_CONFIG,
           updatedAt: Date.now(),
           status: 'draft',
-          results: []
+          results: [],
+          substitutes: []
       };
       setRaffles(prev => [...prev, newRaffle]);
       loadRaffleIntoEditor(newRaffle);
@@ -232,7 +299,8 @@ export default function App() {
                 config: DEFAULT_CONFIG,
                 updatedAt: Date.now(),
                 status: 'draft',
-                results: []
+                results: [],
+                substitutes: []
              };
              if (currentRaffleId === idToDelete) {
                  setTimeout(() => loadRaffleIntoEditor(defaultRaffle), 0);
@@ -261,7 +329,7 @@ export default function App() {
 
       setRaffles(prev => prev.map(r => 
         r.id === idToReset 
-        ? { ...r, status: 'draft', results: [] } 
+        ? { ...r, status: 'draft', results: [], substitutes: [] } 
         : r
       ));
 
@@ -271,7 +339,7 @@ export default function App() {
 
   const duplicateRaffle = (raffle, e) => {
       e.stopPropagation();
-      const newRaffle = { ...raffle, id: generateId(), title: `${raffle.title} (Copia)`, updatedAt: Date.now(), status: 'draft', results: [] };
+      const newRaffle = { ...raffle, id: generateId(), title: `${raffle.title} (Copia)`, updatedAt: Date.now(), status: 'draft', results: [], substitutes: [] };
       setRaffles(prev => [...prev, newRaffle]);
       showToast("Sorteo duplicado");
   };
@@ -280,9 +348,10 @@ export default function App() {
       setCurrentRaffleId(raffle.id);
       setTitle(raffle.title);
       setParticipants(raffle.participants || []);
-      setConfig(raffle.config || DEFAULT_CONFIG);
+      setConfig({ ...DEFAULT_CONFIG, ...raffle.config }); 
       setView('editor');
       setWinners(raffle.results || []); 
+      setSubstitutes(raffle.substitutes || []);
   };
 
   // Auto-guardado editor
@@ -301,14 +370,15 @@ export default function App() {
 
   // --- Lógica de Ejecución y Visualización ---
 
-  // Botón Principal del Dashboard
   const handleMainAction = (raffle, e) => {
       e.stopPropagation();
       loadRaffleIntoEditor(raffle);
       setView('live');
+      setShowSubstitutes(false); // Resetear visibilidad de suplentes
       
       if (raffle.status === 'completed') {
-          setWinners(raffle.results);
+          setWinners(raffle.results || []);
+          setSubstitutes(raffle.substitutes || []);
           setLiveStep('results');
           setCurrentWinnerIndex(0);
           setShowConfetti(true); 
@@ -316,10 +386,10 @@ export default function App() {
       } else {
           setLiveStep('ready');
           setWinners([]);
+          setSubstitutes([]);
       }
   };
 
-  // Función para calcular tamaño de fuente dinámico
   const getWinnerFontSize = (text) => {
     if (!text) return "text-5xl md:text-8xl";
     const len = text.length;
@@ -331,21 +401,33 @@ export default function App() {
 
   const startDraw = () => {
     if (participants.length === 0) return;
+    const totalToSelect = (config.numWinners || 1) + (config.numSubstitutes || 0);
+    if (participants.length < totalToSelect) {
+        showToast(`Necesitas al menos ${totalToSelect} participantes`);
+        return;
+    }
+
     playSound(clickAudio);
     
-    // Cálculo de ganadores
     const shuffled = [...participants];
     for (let i = shuffled.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
-    const selected = shuffled.slice(0, config.numWinners);
     
-    setWinners(selected);
+    // Seleccionar ganadores
+    const selectedWinners = shuffled.slice(0, config.numWinners);
+    // Seleccionar suplentes (los siguientes en la lista)
+    const selectedSubstitutes = shuffled.slice(config.numWinners, totalToSelect);
+    
+    setWinners(selectedWinners);
+    setSubstitutes(selectedSubstitutes);
+    
     setCountdown(config.timerDuration);
     setLiveStep('countdown');
     setCurrentWinnerIndex(0);
     setShowConfetti(false);
+    setShowSubstitutes(false); // Resetear al iniciar nuevo sorteo
     playSound(tickAudio);
   };
 
@@ -369,7 +451,7 @@ export default function App() {
         setLiveStep('results');
         triggerCelebration();
 
-        // GUARDADO DE RESULTADOS (PERSISTENCIA)
+        // GUARDADO DE RESULTADOS
         if (currentRaffleId) {
             setRaffles(prev => prev.map(r => 
                 r.id === currentRaffleId 
@@ -377,6 +459,7 @@ export default function App() {
                     ...r, 
                     status: 'completed', 
                     results: winners,
+                    substitutes: substitutes,
                     completedAt: Date.now()
                   } 
                 : r
@@ -389,7 +472,7 @@ export default function App() {
       }
     }
     return () => clearInterval(interval);
-  }, [view, liveStep, countdown, participants, winners, currentRaffleId]);
+  }, [view, liveStep, countdown, participants, winners, substitutes, currentRaffleId]);
 
   const triggerCelebration = () => { setShowConfetti(true); setTimeout(() => playSound(applauseAudio), 100); };
   
@@ -398,7 +481,9 @@ export default function App() {
       [applauseAudio, tickAudio].forEach(stopSound);
       setLiveStep('ready');
       setWinners([]);
+      setSubstitutes([]);
       setShowConfetti(false);
+      setShowSubstitutes(false);
   };
 
   // --- Funciones Archivos ---
@@ -416,6 +501,9 @@ export default function App() {
     setParticipants(Array.from(new Set(names)));
     setIsEditingList(false);
   };
+
+  // --- Render Helpers ---
+  const theme = getCurrentTheme();
 
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans overflow-hidden relative select-none flex flex-col">
@@ -454,7 +542,6 @@ export default function App() {
       {/* --- DASHBOARD VIEW --- */}
       {view === 'dashboard' && (
         <div className="relative z-10 flex flex-col h-screen p-6 md:p-12 animate-fadeIn overflow-y-auto">
-            
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
                 <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-orange-600 rounded-2xl flex items-center justify-center shadow-lg">
@@ -488,69 +575,73 @@ export default function App() {
                     <span className="text-white/40 font-bold uppercase tracking-widest text-sm group-hover:text-white">Nuevo Sorteo</span>
                 </button>
 
-                {raffles.map(raffle => (
-                    <div 
-                        key={raffle.id} 
-                        onClick={(e) => {
-                            if (raffle.status === 'completed') {
-                                handleMainAction(raffle, e); 
-                            } else {
-                                loadRaffleIntoEditor(raffle);
-                            }
-                        }}
-                        className={`group backdrop-blur-md border rounded-3xl p-6 relative hover:border-white/30 transition-all cursor-pointer flex flex-col h-64 ${raffle.status === 'completed' ? 'bg-green-900/20 border-green-500/30' : 'bg-black/40 border-white/10'}`}
-                    >
-                        <div className="flex justify-between items-start mb-4">
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg ${raffle.status === 'completed' ? 'bg-green-500 text-black' : 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white'}`}>
-                                {raffle.status === 'completed' ? <CheckCircle size={18} /> : <Trophy size={18} />}
+                {raffles.map(raffle => {
+                    // Obtener el tema de este sorteo para colorear la tarjeta
+                    const rTheme = THEMES[raffle.config?.colorTheme || 'gold'];
+                    return (
+                        <div 
+                            key={raffle.id} 
+                            onClick={(e) => {
+                                if (raffle.status === 'completed') {
+                                    handleMainAction(raffle, e); 
+                                } else {
+                                    loadRaffleIntoEditor(raffle);
+                                }
+                            }}
+                            className={`group backdrop-blur-md border rounded-3xl p-6 relative hover:border-white/30 transition-all cursor-pointer flex flex-col h-64 ${raffle.status === 'completed' ? 'bg-green-900/20 border-green-500/30' : 'bg-black/40 border-white/10'}`}
+                        >
+                            <div className="flex justify-between items-start mb-4">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg ${raffle.status === 'completed' ? 'bg-green-500 text-black' : `bg-gradient-to-br ${rTheme.from} ${rTheme.to} text-white`}`}>
+                                    {raffle.status === 'completed' ? <CheckCircle size={18} /> : <Trophy size={18} />}
+                                </div>
+                                <div className="flex gap-2">
+                                    <button onClick={(e) => duplicateRaffle(raffle, e)} className="p-2 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-colors" title="Duplicar">
+                                        <Copy size={16} />
+                                    </button>
+                                    {raffle.status === 'completed' && (
+                                        <button onClick={(e) => requestReset(raffle.id, e)} className="p-2 hover:bg-yellow-500/20 rounded-lg text-white/40 hover:text-yellow-400 transition-colors z-20" title="Reiniciar Sorteo">
+                                            <RotateCcw size={16} />
+                                        </button>
+                                    )}
+                                    <button onClick={(e) => requestDelete(raffle.id, e)} className="p-2 hover:bg-red-500/20 rounded-lg text-white/40 hover:text-red-400 transition-colors z-20" title="Eliminar">
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
                             </div>
-                            <div className="flex gap-2">
-                                <button onClick={(e) => duplicateRaffle(raffle, e)} className="p-2 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-colors" title="Duplicar">
-                                    <Copy size={16} />
+                            
+                            <div className="flex-1 overflow-hidden">
+                                <h3 className={`text-xl font-bold text-white mb-2 line-clamp-1 leading-tight group-hover:${rTheme.text} transition-colors`}>{raffle.title}</h3>
+                                {raffle.status === 'completed' ? (
+                                    <div className="bg-black/30 rounded-lg p-2 text-xs text-white/70 h-full overflow-hidden">
+                                        <p className="font-bold text-green-400 uppercase mb-1">Resultados:</p>
+                                        <div className="flex flex-col gap-1 overflow-y-auto max-h-[60px] custom-scrollbar">
+                                            {raffle.results?.map((w, i) => (
+                                                <div key={i} className="flex gap-2"><span className="text-white/30">{i+1}.</span> <span className="truncate">{w}</span></div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-xs text-white/40 space-y-1">
+                                        <p>👥 {raffle.participants?.length || 0} Participantes</p>
+                                        <p>🏆 {raffle.config?.numWinners || 1} Ganador(es)</p>
+                                        <p>🔄 {raffle.config?.numSubstitutes || 0} Suplente(s)</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="mt-4 pt-4 border-t border-white/10 flex gap-2">
+                                <button onClick={(e) => handleMainAction(raffle, e)} className={`flex-1 py-2 rounded-xl text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 font-bold ${raffle.status === 'completed' ? 'bg-white/10 hover:bg-white/20 text-white' : `bg-white/5 hover:${rTheme.bg} hover:text-black text-white`}`}>
+                                    {raffle.status === 'completed' ? <><Eye size={14}/> Ver Resultados</> : <><Play size={14}/> Lanzar</>}
                                 </button>
-                                {raffle.status === 'completed' && (
-                                    <button onClick={(e) => requestReset(raffle.id, e)} className="p-2 hover:bg-yellow-500/20 rounded-lg text-white/40 hover:text-yellow-400 transition-colors z-20" title="Reiniciar Sorteo">
-                                        <RotateCcw size={16} />
+                                {raffle.status !== 'completed' && (
+                                    <button className="flex-1 bg-white/5 hover:bg-white/20 text-white py-2 rounded-xl text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2">
+                                        <Edit3 size={14} /> Editar
                                     </button>
                                 )}
-                                <button onClick={(e) => requestDelete(raffle.id, e)} className="p-2 hover:bg-red-500/20 rounded-lg text-white/40 hover:text-red-400 transition-colors z-20" title="Eliminar">
-                                    <Trash2 size={16} />
-                                </button>
                             </div>
                         </div>
-                        
-                        <div className="flex-1 overflow-hidden">
-                            <h3 className="text-xl font-bold text-white mb-2 line-clamp-1 leading-tight group-hover:text-yellow-400 transition-colors">{raffle.title}</h3>
-                            {raffle.status === 'completed' ? (
-                                <div className="bg-black/30 rounded-lg p-2 text-xs text-white/70 h-full overflow-hidden">
-                                    <p className="font-bold text-green-400 uppercase mb-1">Resultados:</p>
-                                    <div className="flex flex-col gap-1 overflow-y-auto max-h-[60px] custom-scrollbar">
-                                        {raffle.results?.map((w, i) => (
-                                            <div key={i} className="flex gap-2"><span className="text-white/30">{i+1}.</span> <span className="truncate">{w}</span></div>
-                                        ))}
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="text-xs text-white/40 space-y-1">
-                                    <p>👥 {raffle.participants?.length || 0} Participantes</p>
-                                    <p>🏆 {raffle.config?.numWinners || 1} Ganador(es)</p>
-                                    <p>⏱️ {raffle.config?.timerDuration || 5} Segundos</p>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="mt-4 pt-4 border-t border-white/10 flex gap-2">
-                             <button onClick={(e) => handleMainAction(raffle, e)} className={`flex-1 py-2 rounded-xl text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 font-bold ${raffle.status === 'completed' ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-white/5 hover:bg-green-500 hover:text-black text-white'}`}>
-                                {raffle.status === 'completed' ? <><Eye size={14}/> Ver Resultados</> : <><Play size={14}/> Lanzar</>}
-                             </button>
-                             {raffle.status !== 'completed' && (
-                                <button className="flex-1 bg-white/5 hover:bg-white/20 text-white py-2 rounded-xl text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2">
-                                    <Edit3 size={14} /> Editar
-                                </button>
-                             )}
-                        </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
         </div>
       )}
@@ -583,7 +674,7 @@ export default function App() {
                             <Trash2 size={18} />
                         </button>
                     )}
-                    <button onClick={(e) => handleMainAction(raffles.find(r => r.id === currentRaffleId), e)} className="bg-green-500 hover:bg-green-400 text-black font-bold py-2 px-6 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-green-500/20">
+                    <button onClick={(e) => handleMainAction(raffles.find(r => r.id === currentRaffleId), e)} className={`bg-gradient-to-r ${theme.from} ${theme.to} text-black font-bold py-2 px-6 rounded-xl flex items-center gap-2 transition-all shadow-lg hover:scale-105`}>
                         <Monitor size={18} /> <span className="hidden md:inline">IR AL LIVE</span>
                     </button>
                 </div>
@@ -593,7 +684,7 @@ export default function App() {
                 <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <div className="bg-black/30 border border-white/10 rounded-3xl p-6 flex flex-col h-[600px]">
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="font-bold flex items-center gap-2"><Users size={18} className="text-yellow-500"/> Lista de Participantes</h3>
+                            <h3 className={`font-bold flex items-center gap-2 ${theme.text}`}><Users size={18}/> Lista de Participantes</h3>
                             <div className="flex gap-2">
                                 <button onClick={() => setParticipants([])} className="p-2 hover:bg-red-500/20 text-white/50 hover:text-red-400 rounded-lg"><Trash2 size={16}/></button>
                                 <button onClick={() => { setIsEditingList(!isEditingList); if(!isEditingList) setInputText(participants.join('\n')); else handleManualSave(); }} className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase border ${isEditingList ? 'bg-green-500/20 border-green-500/50 text-green-400' : 'bg-white/5 border-white/10'}`}>
@@ -621,9 +712,25 @@ export default function App() {
                             </div>
                         )}
                     </div>
+                    
                     <div className="bg-black/30 border border-white/10 rounded-3xl p-8 flex flex-col gap-8 h-fit">
-                        <h3 className="font-bold flex items-center gap-2"><Settings size={18} className="text-purple-400"/> Configuración</h3>
-                        {/* Si el sorteo está completado, mostrar advertencia */}
+                        <h3 className={`font-bold flex items-center gap-2 ${theme.text}`}><Settings size={18}/> Configuración</h3>
+                        
+                        {/* THEME SELECTOR */}
+                        <div>
+                            <label className="flex items-center gap-2 text-xs font-bold uppercase text-white/50 mb-3"><Palette size={12}/> Color de Énfasis</label>
+                            <div className="flex gap-3">
+                                {Object.values(THEMES).map((t) => (
+                                    <button 
+                                        key={t.id}
+                                        onClick={() => setConfig({...config, colorTheme: t.id})}
+                                        className={`w-8 h-8 rounded-full bg-gradient-to-br ${t.from} ${t.to} border-2 transition-all hover:scale-110 ${config.colorTheme === t.id ? 'border-white scale-110 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                                        title={t.name}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+
                         {raffles.find(r => r.id === currentRaffleId)?.status === 'completed' && (
                              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 flex items-start gap-3">
                                 <AlertTriangle className="text-yellow-500 shrink-0" size={20} />
@@ -633,15 +740,23 @@ export default function App() {
                                 </div>
                              </div>
                         )}
+                        
                         <div className={`space-y-6 ${raffles.find(r => r.id === currentRaffleId)?.status === 'completed' ? 'opacity-50 pointer-events-none' : ''}`}>
-                            <div>
-                                <label className="flex justify-between text-xs font-bold uppercase text-white/50 mb-2">Ganadores <span className="text-purple-400">{config.numWinners}</span></label>
-                                <input type="range" min="1" max={Math.max(1, participants.length)} value={config.numWinners} onChange={(e) => setConfig({...config, numWinners: parseInt(e.target.value)})} className="w-full h-2 bg-black/50 rounded-lg accent-purple-500 cursor-pointer"/>
+                            <div className="grid grid-cols-2 gap-6">
+                                <div>
+                                    <label className={`flex justify-between text-xs font-bold uppercase text-white/50 mb-2`}>Ganadores <span className={theme.text}>{config.numWinners}</span></label>
+                                    <input type="range" min="1" max={Math.max(1, participants.length)} value={config.numWinners} onChange={(e) => setConfig({...config, numWinners: parseInt(e.target.value)})} className={`w-full h-2 bg-black/50 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:${theme.bg}`}/>
+                                </div>
+                                <div>
+                                    <label className={`flex justify-between text-xs font-bold uppercase text-white/50 mb-2`}>Suplentes <span className="text-white">{config.numSubstitutes || 0}</span></label>
+                                    <input type="range" min="0" max={Math.max(0, participants.length - config.numWinners)} value={config.numSubstitutes || 0} onChange={(e) => setConfig({...config, numSubstitutes: parseInt(e.target.value)})} className="w-full h-2 bg-black/50 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"/>
+                                </div>
                             </div>
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="flex items-center gap-2 text-xs font-bold uppercase text-white/50 mb-2"><Clock size={12}/> Tiempo (s)</label>
-                                    <input type="number" value={config.timerDuration} onChange={(e) => setConfig({...config, timerDuration: Math.max(1, parseInt(e.target.value)||0)})} className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 font-bold text-center focus:border-purple-500 outline-none"/>
+                                    <input type="number" value={config.timerDuration} onChange={(e) => setConfig({...config, timerDuration: Math.max(1, parseInt(e.target.value)||0)})} className={`w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 font-bold text-center focus:${theme.border} outline-none`}/>
                                 </div>
                                 <div>
                                     <label className="flex items-center gap-2 text-xs font-bold uppercase text-white/50 mb-2"><MousePointerClick size={12}/> Revelar</label>
@@ -652,7 +767,7 @@ export default function App() {
                                 </div>
                             </div>
                             <label className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 cursor-pointer border border-transparent hover:border-white/10 transition-all">
-                                <input type="checkbox" checked={config.removeWinners} onChange={(e) => setConfig({...config, removeWinners: e.target.checked})} className="w-4 h-4 accent-purple-500 rounded bg-black/50 border-white/20"/>
+                                <input type="checkbox" checked={config.removeWinners} onChange={(e) => setConfig({...config, removeWinners: e.target.checked})} className={`w-4 h-4 rounded bg-black/50 border-white/20 accent-${theme.bg.replace('bg-','')}`}/>
                                 <span className="text-sm font-medium text-white/80">Eliminar ganadores al finalizar</span>
                             </label>
                         </div>
@@ -695,11 +810,11 @@ export default function App() {
             {liveStep === 'ready' && (
                 <div className="text-center animate-fadeInUp max-w-4xl px-6">
                     <div className="mb-12 relative flex justify-center">
-                        <div className="absolute inset-0 bg-yellow-500/20 blur-[120px] rounded-full pointer-events-none"></div>
+                        <div className={`absolute inset-0 ${theme.bg.replace('bg-','bg-')}/20 blur-[120px] rounded-full pointer-events-none`}></div>
                         {logo ? (
                             <img src={logo} alt="Event Logo" className="h-40 md:h-56 w-auto object-contain drop-shadow-2xl animate-popIn" />
                         ) : (
-                            <Trophy size={100} className="text-yellow-400 drop-shadow-[0_0_30px_rgba(250,204,21,0.6)] animate-popIn" />
+                            <Trophy size={100} className={`${theme.text} drop-shadow-[0_0_30px_rgba(255,255,255,0.3)] animate-popIn`} />
                         )}
                     </div>
                     <h1 className="text-5xl md:text-8xl font-black text-white uppercase italic tracking-tighter drop-shadow-xl mb-4 leading-none">{title}</h1>
@@ -716,7 +831,7 @@ export default function App() {
                     
                     {/* Botón de Comenzar */}
                     {raffles.find(r => r.id === currentRaffleId)?.status !== 'completed' ? (
-                        <button onClick={startDraw} className="group relative px-16 py-6 bg-gradient-to-r from-yellow-500 to-orange-600 rounded-full font-black text-2xl text-white shadow-[0_0_60px_rgba(234,179,8,0.4)] hover:shadow-[0_0_100px_rgba(234,179,8,0.6)] hover:scale-105 transition-all duration-300 active:scale-95">
+                        <button onClick={startDraw} className={`group relative px-16 py-6 bg-gradient-to-r ${theme.from} ${theme.to} rounded-full font-black text-2xl text-white shadow-[0_0_60px_rgba(255,255,255,0.2)] hover:shadow-[0_0_100px_rgba(255,255,255,0.4)] hover:scale-105 transition-all duration-300 active:scale-95`}>
                             <span className="relative z-10 flex items-center gap-3"><Play fill="currentColor" /> COMENZAR</span>
                             <div className="absolute inset-0 rounded-full bg-white/30 animate-pulse"></div>
                         </button>
@@ -731,32 +846,33 @@ export default function App() {
             {liveStep === 'countdown' && (
                 <div className="flex flex-col items-center justify-center w-full relative">
                     <div className="relative mb-12 scale-150">
-                        <div className="w-64 h-64 rounded-full border-[8px] border-yellow-500/10 flex flex-col items-center justify-center bg-black/40 backdrop-blur-xl shadow-[0_0_150px_rgba(255,191,0,0.15)] relative z-10">
+                        <div className={`w-64 h-64 rounded-full border-[8px] border-white/10 flex flex-col items-center justify-center bg-black/40 backdrop-blur-xl shadow-[0_0_150px_rgba(255,255,255,0.1)] relative z-10`}>
                             <span key={countdown} className="text-[8rem] font-black text-white tabular-nums z-10 drop-shadow-2xl leading-none animate-ping-once">{countdown}</span>
-                            <div className="absolute inset-[-8px] w-[calc(100%+16px)] h-[calc(100%+16px)] rounded-full border-t-[6px] border-yellow-500 animate-spin" style={{ animationDuration: '1s' }}></div>
+                            <div className={`absolute inset-[-8px] w-[calc(100%+16px)] h-[calc(100%+16px)] rounded-full border-t-[6px] ${theme.border} animate-spin`} style={{ animationDuration: '1s' }}></div>
                         </div>
                     </div>
                     <div className="w-full max-w-3xl bg-black/60 backdrop-blur-xl border border-white/10 p-8 rounded-[3rem] text-center relative overflow-hidden shadow-2xl mt-8">
-                         <div className="text-xs font-black text-yellow-500 uppercase tracking-[0.5em] mb-4 opacity-80 animate-pulse">{config.numWinners > 1 ? 'Seleccionando Ganadores...' : 'Seleccionando Ganador...'}</div>
+                         <div className={`text-xs font-black ${theme.text} uppercase tracking-[0.5em] mb-4 opacity-80 animate-pulse`}>{config.numWinners > 1 ? 'Seleccionando Ganadores...' : 'Seleccionando Ganador...'}</div>
                          <div className="text-6xl font-black text-white/90 italic tracking-tighter truncate h-20">{randomName}</div>
                     </div>
                 </div>
             )}
 
             {liveStep === 'results' && (
-                <div className="w-full flex flex-col items-center max-w-6xl animate-popIn">
-                    <div className="mb-12 text-center">
-                        <div className="px-10 py-3 rounded-full bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 text-sm font-black uppercase tracking-[0.4em] inline-block shadow-[0_0_50px_rgba(234,179,8,0.3)] backdrop-blur-xl">
+                <div className="w-full flex flex-col items-center max-w-6xl animate-popIn pb-20 overflow-y-auto max-h-screen custom-scrollbar">
+                    <div className="mb-8 text-center mt-10">
+                        <div className={`px-10 py-3 rounded-full bg-white/10 border border-white/20 ${theme.text} text-sm font-black uppercase tracking-[0.4em] inline-block shadow-[0_0_50px_rgba(0,0,0,0.5)] backdrop-blur-xl`}>
                             {winners.length > 1 ? '¡Ganadores Oficiales!' : '¡Felicidades!'}
                         </div>
                     </div>
 
+                    {/* MAIN WINNERS DISPLAY */}
                     {config.revealMode === 'individual' ? (
-                        <div className="flex flex-col items-center w-full max-w-5xl">
-                             <div className="w-full bg-gradient-to-r from-slate-100 to-slate-300 text-slate-900 rounded-[3rem] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.9)] p-12 md:p-16 relative overflow-hidden mb-12 border-[8px] border-white/20 ring-4 ring-yellow-500/40 flex flex-col md:flex-row items-center gap-12">
+                        <div className="flex flex-col items-center w-full max-w-5xl mb-12">
+                             <div className={`w-full bg-gradient-to-r from-slate-100 to-slate-300 text-slate-900 rounded-[3rem] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.9)] p-12 md:p-16 relative overflow-hidden mb-12 border-[8px] border-white/20 ring-4 ${theme.ring}/40 flex flex-col md:flex-row items-center gap-12`}>
                                 <div className="absolute top-0 right-0 p-4 opacity-[0.03] text-black pointer-events-none transform rotate-12 scale-150"><Trophy size={400} /></div>
                                 <div className="relative z-10 flex-shrink-0">
-                                    <div className="w-40 h-40 bg-gradient-to-br from-yellow-400 to-orange-600 rounded-[2.5rem] flex items-center justify-center shadow-2xl transform -rotate-3 ring-[6px] ring-white">
+                                    <div className={`w-40 h-40 bg-gradient-to-br ${theme.from} ${theme.to} rounded-[2.5rem] flex items-center justify-center shadow-2xl transform -rotate-3 ring-[6px] ring-white`}>
                                         <Trophy className="text-white" size={80} />
                                     </div>
                                 </div>
@@ -775,24 +891,67 @@ export default function App() {
                                      <span className="text-white/40 font-bold text-xs uppercase tracking-widest mr-4">Navegar Resultados</span>
                                      <button onClick={() => { playSound(clickAudio); setShowConfetti(false); setTimeout(() => { setCurrentWinnerIndex(Math.max(0, currentWinnerIndex - 1)); triggerCelebration(); }, 100); }} disabled={currentWinnerIndex === 0} className="w-12 h-12 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-white"><ChevronLeft size={24}/></button>
                                      <span className="font-mono text-white text-2xl w-20 text-center font-bold">{currentWinnerIndex + 1}/{winners.length}</span>
-                                     <button onClick={() => { playSound(clickAudio); setShowConfetti(false); setTimeout(() => { setCurrentWinnerIndex(Math.min(winners.length - 1, currentWinnerIndex + 1)); triggerCelebration(); }, 100); }} disabled={currentWinnerIndex === winners.length - 1} className="w-12 h-12 flex items-center justify-center rounded-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-lg"><ChevronRight size={24}/></button>
+                                     <button onClick={() => { playSound(clickAudio); setShowConfetti(false); setTimeout(() => { setCurrentWinnerIndex(Math.min(winners.length - 1, currentWinnerIndex + 1)); triggerCelebration(); }, 100); }} disabled={currentWinnerIndex === winners.length - 1} className={`w-12 h-12 flex items-center justify-center rounded-full bg-gradient-to-br ${theme.from} ${theme.to} text-white font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-lg`}><ChevronRight size={24}/></button>
                                  </div>
                              )}
+
+                            {/* Show Substitutes Button for Individual Mode - Only on last slide */}
+                            {winners.length > 0 && currentWinnerIndex === winners.length - 1 && substitutes.length > 0 && (
+                                <button 
+                                    onClick={() => setShowSubstitutes(!showSubstitutes)}
+                                    className="mt-8 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl font-bold uppercase tracking-widest text-sm flex items-center gap-2 transition-all animate-fadeIn"
+                                >
+                                    {showSubstitutes ? <EyeOff size={18}/> : <Eye size={18}/>}
+                                    {showSubstitutes ? 'Ocultar Suplentes' : 'Ver Suplentes'}
+                                </button>
+                            )}
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-h-[60vh] overflow-y-auto px-6 custom-scrollbar pb-20">
-                            {winners.map((winner, index) => (
-                                <div key={index} className="bg-white/10 backdrop-blur-md p-8 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden group hover:bg-white/15 transition-all hover:-translate-y-2 animate-fadeInUp" style={{ animationDelay: `${index * 0.1}s` }}>
-                                    <div className="absolute top-0 right-0 p-4 opacity-10"><Trophy size={64} className="text-white transform rotate-12"/></div>
-                                    <div className="flex items-center gap-6">
-                                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-white font-black shadow-lg text-lg border-2 border-white/20">{index + 1}</div>
-                                        <div className="flex flex-col">
-                                            <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Ganador</span>
-                                            <span className="text-2xl font-bold text-white uppercase tracking-tight leading-none group-hover:text-yellow-400 transition-colors">{winner}</span>
+                        <div className="w-full flex flex-col items-center">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full px-6 mb-8">
+                                {winners.map((winner, index) => (
+                                    <div key={index} className="bg-white/10 backdrop-blur-md p-8 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden group hover:bg-white/15 transition-all hover:-translate-y-2 animate-fadeInUp" style={{ animationDelay: `${index * 0.1}s` }}>
+                                        <div className="absolute top-0 right-0 p-4 opacity-10"><Trophy size={64} className="text-white transform rotate-12"/></div>
+                                        <div className="flex items-center gap-6">
+                                            <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${theme.from} ${theme.to} flex items-center justify-center text-white font-black shadow-lg text-lg border-2 border-white/20`}>{index + 1}</div>
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Ganador</span>
+                                                <span className={`text-2xl font-bold text-white uppercase tracking-tight leading-none group-hover:${theme.text} transition-colors`}>{winner}</span>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
+
+                            {/* Show Substitutes Button for Grid Mode */}
+                            {substitutes.length > 0 && (
+                                <button 
+                                    onClick={() => setShowSubstitutes(!showSubstitutes)}
+                                    className="mb-8 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl font-bold uppercase tracking-widest text-sm flex items-center gap-2 transition-all"
+                                >
+                                    {showSubstitutes ? <EyeOff size={18}/> : <Eye size={18}/>}
+                                    {showSubstitutes ? 'Ocultar Suplentes' : 'Ver Suplentes'}
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+                    {/* SUBSTITUTES SECTION - CONDITIONALLY RENDERED */}
+                    {showSubstitutes && substitutes.length > 0 && (
+                        <div className="w-full max-w-5xl px-6 animate-fadeInUp mb-12" style={{ animationDelay: '0.1s' }}>
+                            <div className="flex items-center gap-4 mb-6 opacity-60">
+                                <div className="h-px bg-white/30 flex-1"></div>
+                                <span className="text-sm font-bold uppercase tracking-widest text-white/60 flex items-center gap-2"><Shield size={16}/> Lista de Suplentes</span>
+                                <div className="h-px bg-white/30 flex-1"></div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {substitutes.map((sub, index) => (
+                                    <div key={index} className="bg-black/30 border border-white/5 p-4 rounded-xl flex items-center gap-4">
+                                        <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white/50">{index + 1}</div>
+                                        <span className="text-white/80 font-medium">{sub}</span>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     )}
                 </div>
